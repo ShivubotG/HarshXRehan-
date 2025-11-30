@@ -1,0 +1,692 @@
+import random
+import time
+import asyncio
+import json
+import os
+import subprocess
+import sys
+from flask import Flask, render_template, request, jsonify, session
+import threading
+import logging
+from datetime import datetime
+import re
+import uuid
+from urllib.parse import unquote
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Global variables
+PLAYWRIGHT_AVAILABLE = False
+BROWSER_INSTALLED = False
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+
+# User-specific data stores
+user_sessions = {}
+session_lock = threading.Lock()
+system_logs = []
+
+# Emoji ranges
+EMOJI_RANGES = [
+    (0x1F600, 0x1F64F), (0x1F300, 0x1F5FF), (0x1F680, 0x1F6FF),
+    (0x1F1E0, 0x1F1FF), (0x2600, 0x26FF), (0x2700, 0x27BF)
+]
+
+def get_user_session():
+    if 'user_id' not in session:
+        session['user_id'] = str(uuid.uuid4())
+    
+    user_id = session['user_id']
+    
+    with session_lock:
+        if user_id not in user_sessions:
+            user_sessions[user_id] = {
+                'livelogs': list(system_logs),
+                'tasks_data': {},
+                'last_activity': time.time()
+            }
+        user_sessions[user_id]['last_activity'] = time.time()
+        return user_sessions[user_id]
+
+def log_console(msg, user_id=None):
+    timestamp = datetime.now().strftime('%H:%M:%S')
+    formatted_msg = f"[{timestamp}] {msg}"
+    print(formatted_msg)
+    
+    system_logs.append(formatted_msg)
+    if len(system_logs) > 1000:
+        system_logs.pop(0)
+    
+    if user_id:
+        with session_lock:
+            if user_id in user_sessions:
+                user_sessions[user_id]['livelogs'].append(formatted_msg)
+                if len(user_sessions[user_id]['livelogs']) > 1000:
+                    user_sessions[user_id]['livelogs'].pop(0)
+    
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            user_session = get_user_session()
+            user_session['livelogs'].append(formatted_msg)
+            if len(user_session['livelogs']) > 1000:
+                user_session['livelogs'].pop(0)
+    except:
+        pass
+
+def install_playwright_and_browser():
+    global PLAYWRIGHT_AVAILABLE, BROWSER_INSTALLED
+    
+    try:
+        log_console("🚀 Installing Playwright...")
+        
+        result = subprocess.run([
+            sys.executable, "-m", "pip", "install", 
+            "playwright==1.47.0", "flask==2.3.3"
+        ], capture_output=True, text=True, timeout=600)
+        
+        if result.returncode == 0:
+            PLAYWRIGHT_AVAILABLE = True
+            log_console("✅ Playwright installed successfully!")
+        else:
+            log_console(f"❌ Playwright installation failed: {result.stderr[:500]}")
+            return False
+
+        log_console("📦 Installing Chromium browser...")
+        install_result = subprocess.run([
+            sys.executable, "-m", "playwright", "install", "chromium"
+        ], capture_output=True, text=True, timeout=1800)
+        
+        if install_result.returncode == 0:
+            BROWSER_INSTALLED = True
+            log_console("✅ Chromium installed successfully!")
+        else:
+            log_console(f"⚠️ Chromium installation warning: {install_result.stderr[:500]}")
+
+        try:
+            from playwright.async_api import async_playwright
+            log_console("🎉 Playwright imports successful!")
+            return True
+        except ImportError as e:
+            log_console(f"❌ Playwright import test failed: {e}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        log_console("❌ Installation timed out")
+        return False
+    except Exception as e:
+        log_console(f"❌ Installation error: {str(e)}")
+        return False
+
+def generate_random_emoji():
+    start, end = random.choice(EMOJI_RANGES)
+    return chr(random.randint(start, end))
+
+def enhance_message(message):
+    if not message or len(message.strip()) == 0:
+        return message
+        
+    words = message.split()
+    if len(words) <= 1:
+        return f"{generate_random_emoji()} {message} {generate_random_emoji()}"
+    
+    enhanced_words = []
+    for i, word in enumerate(words):
+        enhanced_words.append(word)
+        if random.random() < 0.3 and i < len(words) - 1:
+            enhanced_words.append(generate_random_emoji())
+    
+    if random.random() < 0.4:
+        enhanced_words.insert(0, generate_random_emoji())
+    if random.random() < 0.4:
+        enhanced_words.append(generate_random_emoji())
+    
+    return ' '.join(enhanced_words)
+
+def parse_cookies(cookie_input):
+    cookies = []
+    
+    if not cookie_input or not cookie_input.strip():
+        return cookies
+    
+    log_console(f"🔍 Parsing cookies input (length: {len(cookie_input)})")
+    
+    cookie_input = cookie_input.strip()
+    
+    if cookie_input.startswith('[') and cookie_input.endswith(']'):
+        try:
+            data = json.loads(cookie_input)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and 'name' in item and 'value' in item:
+                        cookies.append({
+                            'name': str(item['name']),
+                            'value': str(item['value']),
+                            'domain': item.get('domain', '.facebook.com'),
+                            'path': item.get('path', '/'),
+                            'secure': item.get('secure', True),
+                            'httpOnly': item.get('httpOnly', False)
+                        })
+                if cookies:
+                    log_console(f"✅ Parsed {len(cookies)} cookies from JSON array")
+                    return cookies
+        except json.JSONDecodeError:
+            pass
+    
+    cookie_input = cookie_input.replace('; ', ';').replace(' ;', ';')
+    
+    cookie_parts = []
+    if ';' in cookie_input:
+        cookie_parts = [part.strip() for part in cookie_input.split(';') if part.strip()]
+    else:
+        cookie_parts = [line.strip() for line in cookie_input.split('\n') if line.strip()]
+    
+    for part in cookie_parts:
+        if not part or part.startswith('#') or part.startswith('//'):
+            continue
+            
+        if '=' in part:
+            try:
+                name, value = part.split('=', 1)
+                name = name.strip()
+                value = value.strip()
+                
+                name = name.replace('"', '').replace("'", "").replace(';', '')
+                
+                if '%' in value:
+                    try:
+                        value = unquote(value)
+                    except:
+                        pass
+                
+                value = value.split(';')[0].replace('"', '').replace("'", "")
+                
+                if (name and value and 
+                    len(name) > 0 and len(value) > 0 and
+                    not name.startswith('http') and 
+                    ' ' not in name):
+                    
+                    domain = '.facebook.com'
+                    if name in ['xs', 'c_user', 'fr', 'datr', 'sb']:
+                        domain = '.facebook.com'
+                    elif 'instagram' in name.lower():
+                        domain = '.instagram.com'
+                    
+                    cookies.append({
+                        'name': name,
+                        'value': value,
+                        'domain': domain,
+                        'path': '/',
+                        'secure': True,
+                        'httpOnly': name in ['xs', 'fr', 'c_user']
+                    })
+                    log_console(f"✅ Added cookie: {name}={value[:20]}...")
+                    
+            except Exception as e:
+                log_console(f"⚠️ Failed to parse cookie part: {part} - Error: {e}")
+                continue
+    
+    unique_cookies = []
+    seen_names = set()
+    for cookie in cookies:
+        if cookie['name'] not in seen_names:
+            unique_cookies.append(cookie)
+            seen_names.add(cookie['name'])
+    
+    log_console(f"✅ Final parsed cookies: {len(unique_cookies)}")
+    
+    important_cookies = ['c_user', 'xs', 'fr', 'datr', 'sb']
+    found_important = [c for c in unique_cookies if c['name'] in important_cookies]
+    if found_important:
+        log_console(f"🔑 Found important cookies: {[c['name'] for c in found_important]}")
+    else:
+        log_console("⚠️ No important session cookies found (c_user, xs, fr, etc.)")
+    
+    return unique_cookies[:30]
+
+def get_facebook_account_info(cookies):
+    account_info = {
+        'user_id': None,
+        'user_name': 'Unknown',
+        'is_valid': False
+    }
+    
+    try:
+        for cookie in cookies:
+            if cookie['name'] == 'c_user':
+                account_info['user_id'] = cookie['value']
+                account_info['is_valid'] = True
+                break
+        
+        if account_info['user_id']:
+            account_info['user_name'] = f"User_{account_info['user_id'][:6]}"
+            
+    except Exception as e:
+        log_console(f"⚠️ Failed to extract account info: {e}")
+    
+    return account_info
+
+def get_input_data(req, field_name):
+    data = []
+    
+    text_input = req.form.get(field_name, '').strip()
+    if text_input:
+        lines = [line.strip() for line in text_input.split('\n') if line.strip()]
+        data.extend(lines)
+    
+    file = req.files.get(f'{field_name}_file')
+    if file and file.filename:
+        try:
+            content = file.read().decode('utf-8')
+            lines = [line.strip() for line in content.split('\n') if line.strip()]
+            data.extend(lines)
+            log_console(f"📁 Loaded {len(lines)} items from {file.filename}")
+        except Exception as e:
+            log_console(f"❌ File read error: {e}")
+    
+    return data
+
+async def simple_login_check(page, task_id, user_id):
+    """Simple login check - DIRECT APPROACH"""
+    try:
+        log_console(f"[{task_id}] 🔐 Checking login with direct approach...", user_id)
+        
+        # DIRECT METHOD: Go straight to messages with cookies
+        await page.goto('https://www.facebook.com/messages/t/', wait_until='domcontentloaded', timeout=30000)
+        await page.wait_for_timeout(5000)
+        
+        # Check if we're on messages page (indicates logged in)
+        current_url = page.url
+        if 'facebook.com/messages' in current_url or 'facebook.com' in current_url:
+            # Check for any sign of being logged in
+            logged_in = await page.evaluate("""
+                () => {
+                    // Check for logout button or user menu
+                    if (document.querySelector('[aria-label="Your profile"]') || 
+                        document.querySelector('[data-testid="blue_bar_profile_link"]') ||
+                        document.querySelector('[role="navigation"]')) {
+                        return true;
+                    }
+                    
+                    // Check for message interface
+                    if (document.querySelector('[contenteditable="true"]') ||
+                        document.querySelector('[aria-label*="Message" i]')) {
+                        return true;
+                    }
+                    
+                    return false;
+                }
+            """)
+            
+            if logged_in:
+                log_console(f"[{task_id}] ✅ DIRECT LOGIN SUCCESSFUL!", user_id)
+                return {'success': True, 'name': 'Direct Login User', 'id': 'Direct'}
+        
+        return {'success': False, 'name': 'Login Failed', 'id': 'Unknown'}
+        
+    except Exception as e:
+        log_console(f"[{task_id}] ⚠️ Direct login check failed: {e}", user_id)
+        return {'success': False, 'name': 'Error', 'id': 'Unknown'}
+
+async def find_and_send_message(page, conversation_id, message, task_id, user_id):
+    """Find message input and send message - SIMPLIFIED"""
+    try:
+        log_console(f"[{task_id}] 💬 Navigating to conversation: {conversation_id}", user_id)
+        
+        # Go directly to the conversation
+        url = f"https://www.facebook.com/messages/t/{conversation_id}"
+        await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+        await page.wait_for_timeout(8000)
+        
+        # Simple message input finding
+        log_console(f"[{task_id}] 🔍 Looking for message input...", user_id)
+        
+        # Try common selectors
+        selectors = [
+            'div[contenteditable="true"]',
+            '[aria-label*="Message" i]',
+            '[contenteditable="true"][role="textbox"]',
+            'div[aria-label*="message" i]'
+        ]
+        
+        message_input = None
+        for selector in selectors:
+            try:
+                element = await page.query_selector(selector)
+                if element:
+                    is_visible = await element.is_visible()
+                    if is_visible:
+                        message_input = element
+                        log_console(f"[{task_id}] ✅ Found message input with: {selector}", user_id)
+                        break
+            except:
+                continue
+        
+        if not message_input:
+            log_console(f"[{task_id}] ❌ No message input found", user_id)
+            return False
+        
+        # Send message
+        log_console(f"[{task_id}] 📝 Typing message...", user_id)
+        
+        await message_input.click()
+        await page.wait_for_timeout(2000)
+        
+        # Clear and type
+        await message_input.press('Control+A')
+        await page.wait_for_timeout(500)
+        await message_input.press('Backspace')
+        await page.wait_for_timeout(1000)
+        
+        # Type message
+        for char in message:
+            await message_input.press(char)
+            await page.wait_for_timeout(random.randint(20, 50))
+        
+        await page.wait_for_timeout(2000)
+        
+        # Send with Enter
+        await message_input.press('Enter')
+        log_console(f"[{task_id}] ✅ Message sent with Enter", user_id)
+        
+        # Wait and verify
+        await page.wait_for_timeout(5000)
+        
+        # Simple verification - check if input is cleared
+        is_cleared = await page.evaluate("""
+            () => {
+                const active = document.activeElement;
+                if (!active) return false;
+                if (active.contentEditable === 'true') {
+                    return active.textContent === '';
+                }
+                return active.value === '';
+            }
+        """)
+        
+        if is_cleared:
+            log_console(f"[{task_id}] 🎉 MESSAGE DELIVERED SUCCESSFULLY!", user_id)
+        else:
+            log_console(f"[{task_id}] ⚠️ Input not cleared but continuing", user_id)
+        
+        return True
+        
+    except Exception as e:
+        log_console(f"[{task_id}] ❌ Message sending failed: {e}", user_id)
+        return False
+
+async def send_facebook_message_simple(cookies, conversation_id, message, task_id, user_id):
+    """SIMPLE VERSION - Direct approach without complex verification"""
+    if not PLAYWRIGHT_AVAILABLE:
+        log_console(f"[{task_id}] ❌ Playwright not available", user_id)
+        return False
+    
+    try:
+        from playwright.async_api import async_playwright
+        
+        log_console(f"[{task_id}] 🚀 Starting browser...", user_id)
+        
+        # Show account info from cookies
+        account_info = get_facebook_account_info(cookies)
+        if account_info['is_valid']:
+            log_console(f"[{task_id}] 👤 Cookie Account: {account_info['user_name']} (UID: {account_info['user_id']})", user_id)
+        
+        async with async_playwright() as p:
+            # SIMPLE browser launch
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ],
+                timeout=60000
+            )
+            
+            context = await browser.new_context(
+                viewport={'width': 1280, 'height': 720},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            
+            # Add cookies
+            if cookies:
+                try:
+                    await context.add_cookies(cookies)
+                    log_console(f"[{task_id}] ✅ Loaded {len(cookies)} cookies", user_id)
+                except Exception as e:
+                    log_console(f"[{task_id}] ❌ Error adding cookies: {e}", user_id)
+                    await browser.close()
+                    return False
+            
+            page = await context.new_page()
+            
+            # STEP 1: Simple login check
+            login_result = await simple_login_check(page, task_id, user_id)
+            
+            if not login_result['success']:
+                log_console(f"[{task_id}] ❌ LOGIN FAILED", user_id)
+                await browser.close()
+                return False
+            
+            log_console(f"[{task_id}] ✅ Login successful!", user_id)
+            
+            # STEP 2: Send message directly
+            success = await find_and_send_message(page, conversation_id, message, task_id, user_id)
+            
+            await browser.close()
+            return success
+            
+    except Exception as e:
+        log_console(f"[{task_id}] ❌ Error: {str(e)}", user_id)
+        return False
+
+def run_async_task(coro):
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    except Exception as e:
+        log_console(f"Async task error: {e}")
+        return False
+    finally:
+        loop.close()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/status')
+def api_status():
+    user_session = get_user_session()
+    active_tasks = sum(1 for t in user_session['tasks_data'].values() if t.get('active', False))
+    
+    return jsonify({
+        'playwright': PLAYWRIGHT_AVAILABLE,
+        'browser': BROWSER_INSTALLED,
+        'active_tasks': active_tasks,
+        'total_tasks': len(user_session['tasks_data']),
+        'logs_count': len(user_session['livelogs']),
+        'user_id': session['user_id'][:8]
+    })
+
+@app.route('/api/logs')
+def api_logs():
+    user_session = get_user_session()
+    return jsonify({'logs': user_session['livelogs'][-100:]})
+
+@app.route('/api/start', methods=['POST'])
+def api_start():
+    global PLAYWRIGHT_AVAILABLE, BROWSER_INSTALLED
+    
+    user_session = get_user_session()
+    user_id = session['user_id']
+    
+    if not PLAYWRIGHT_AVAILABLE or not BROWSER_INSTALLED:
+        log_console("🔄 Auto-installing dependencies...", user_id)
+        success = install_playwright_and_browser()
+        if not success:
+            return jsonify({'success': False, 'message': 'Installation failed'})
+    
+    cookies_list = get_input_data(request, 'cookies')
+    messages_list = get_input_data(request, 'messages')
+    conversations_list = get_input_data(request, 'conversations')
+    
+    if not cookies_list:
+        return jsonify({'success': False, 'message': 'No cookies provided'})
+    if not messages_list:
+        return jsonify({'success': False, 'message': 'No messages provided'})
+    if not conversations_list:
+        return jsonify({'success': False, 'message': 'No conversations provided'})
+    
+    task_id = f"task_{int(time.time())}_{random.randint(1000, 9999)}"
+    
+    user_session['tasks_data'][task_id] = {
+        'cookies': cookies_list,
+        'messages': messages_list,
+        'conversations': conversations_list,
+        'current_index': 0,
+        'active': True,
+        'success_count': 0,
+        'total_count': len(messages_list) * len(conversations_list) * len(cookies_list),
+        'start_time': time.time(),
+        'user_id': user_id
+    }
+    
+    def task_worker():
+        task = user_session['tasks_data'][task_id]
+        user_id = task['user_id']
+        
+        while task['active'] and task['current_index'] < task['total_count']:
+            try:
+                msg_idx = task['current_index'] % len(task['messages'])
+                conv_idx = (task['current_index'] // len(task['messages'])) % len(task['conversations'])
+                cookie_idx = (task['current_index'] // (len(task['messages']) * len(task['conversations']))) % len(task['cookies'])
+                
+                if cookie_idx >= len(task['cookies']):
+                    break
+                
+                message = task['messages'][msg_idx]
+                conversation = task['conversations'][conv_idx]
+                cookie_input = task['cookies'][cookie_idx]
+                
+                enhanced_msg = enhance_message(message)
+                cookies = parse_cookies(cookie_input)
+                
+                if not cookies:
+                    log_console(f"[{task_id}] ❌ No valid cookies parsed", user_id)
+                    task['current_index'] += 1
+                    continue
+                
+                account_info = get_facebook_account_info(cookies)
+                if account_info['is_valid']:
+                    log_console(f"[{task_id}] 👤 Cookie Account: {account_info['user_name']} (UID: {account_info['user_id']})", user_id)
+                
+                log_console(f"[{task_id}] Sending: '{enhanced_msg}' → {conversation}", user_id)
+                
+                # USE SIMPLE VERSION
+                success = run_async_task(
+                    send_facebook_message_simple(cookies, conversation, enhanced_msg, task_id, user_id)
+                )
+                
+                if success:
+                    task['success_count'] += 1
+                    log_console(f"[{task_id}] ✅ SUCCESS! Total: {task['success_count']}", user_id)
+                else:
+                    log_console(f"[{task_id}] ❌ FAILED to send message", user_id)
+                
+                task['current_index'] += 1
+                
+                delay = random.uniform(8, 15)
+                time.sleep(delay)
+                
+            except Exception as e:
+                log_console(f"[{task_id}] ❌ Worker error: {e}", user_id)
+                task['current_index'] += 1
+                time.sleep(3)
+        
+        task['active'] = False
+        log_console(f"[{task_id}] 🏁 Task completed! Success: {task['success_count']}/{task['total_count']}", user_id)
+    
+    thread = threading.Thread(target=task_worker, daemon=True)
+    thread.start()
+    
+    return jsonify({
+        'success': True, 
+        'task_id': task_id,
+        'message': f'Task {task_id} started successfully!'
+    })
+
+@app.route('/api/stop/<task_id>', methods=['POST'])
+def api_stop(task_id):
+    user_session = get_user_session()
+    if task_id in user_session['tasks_data']:
+        user_session['tasks_data'][task_id]['active'] = False
+        return jsonify({'success': True, 'message': f'Task {task_id} stopped'})
+    return jsonify({'success': False, 'message': 'Task not found'})
+
+@app.route('/api/tasks')
+def api_tasks():
+    user_session = get_user_session()
+    task_list = []
+    for task_id, task in user_session['tasks_data'].items():
+        task_list.append({
+            'id': task_id,
+            'active': task.get('active', False),
+            'success_count': task.get('success_count', 0),
+            'total_count': task.get('total_count', 0),
+            'current_index': task.get('current_index', 0),
+            'progress': min(100, (task.get('current_index', 0) / task.get('total_count', 1)) * 100) if task.get('total_count', 0) > 0 else 0
+        })
+    return jsonify({'tasks': task_list})
+
+def cleanup_inactive_sessions():
+    while True:
+        try:
+            current_time = time.time()
+            with session_lock:
+                inactive_users = []
+                for user_id, session_data in user_sessions.items():
+                    if current_time - session_data['last_activity'] > 3600:
+                        inactive_users.append(user_id)
+                
+                for user_id in inactive_users:
+                    del user_sessions[user_id]
+        except Exception as e:
+            print(f"Error in session cleanup: {e}")
+        
+        time.sleep(300)
+
+def init_app():
+    print("🚀 Neural Messenger 2030 Initializing...")
+    print("📦 Checking dependencies...")
+    
+    cleanup_thread = threading.Thread(target=cleanup_inactive_sessions, daemon=True)
+    cleanup_thread.start()
+    
+    try:
+        from playwright.async_api import async_playwright
+        global PLAYWRIGHT_AVAILABLE
+        PLAYWRIGHT_AVAILABLE = True
+        print("✅ Playwright is available")
+    except ImportError:
+        print("⚠️ Playwright not installed, will auto-install on first use")
+    
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "list-browsers"], 
+                      capture_output=True, timeout=30)
+        global BROWSER_INSTALLED
+        BROWSER_INSTALLED = True
+        print("✅ Browser is installed")
+    except:
+        print("⚠️ Browser not installed, will auto-install on first use")
+
+init_app()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🌐 Starting server on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=False)
