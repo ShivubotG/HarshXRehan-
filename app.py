@@ -534,4 +534,42 @@ def cleanup_inactive_sessions():
                     del user_sessions[user_id]
                     print(f"Cleaned up inactive session: {user_id}")
         except Exception as e:
-            print(f"Error in session c
+            print(f"Error in session cleanup: {e}")
+        
+        time.sleep(300)  # Run every 5 minutes
+
+def init_app():
+    """Initialize the application"""
+    log_console("🚀 Neural Messenger 2030 Initializing...")
+    log_console("📦 Checking dependencies...")
+    
+    # Start session cleanup thread
+    cleanup_thread = threading.Thread(target=cleanup_inactive_sessions, daemon=True)
+    cleanup_thread.start()
+    
+    # Try to import playwright
+    try:
+        from playwright.async_api import async_playwright
+        global PLAYWRIGHT_AVAILABLE
+        PLAYWRIGHT_AVAILABLE = True
+        log_console("✅ Playwright is available")
+    except ImportError:
+        log_console("⚠️ Playwright not installed, will auto-install on first use")
+    
+    # Check if browser is installed
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "list-browsers"], 
+                      capture_output=True, timeout=30)
+        global BROWSER_INSTALLED
+        BROWSER_INSTALLED = True
+        log_console("✅ Browser is installed")
+    except:
+        log_console("⚠️ Browser not installed, will auto-install on first use")
+
+# Initialize the app
+init_app()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    log_console(f"🌐 Starting server on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=False)
