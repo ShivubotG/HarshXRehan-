@@ -192,15 +192,12 @@ def parsecookies(cookieinput):
             pass
 
     # Method 2: Handle multiple cookies in single line separated by semicolons
-    cookieinput = cookieinput.replace('
-', '').replace('
-', ';')
+    cookieinput = cookieinput.replace('', '').replace('', ';')
     cookieparts = []
     if ';' in cookieinput:
         cookieparts = [part.strip() for part in cookieinput.split(';') if part.strip()]
     else:
-        cookieparts = [line.strip() for line in cookieinput.split('
-') if line.strip()]
+        cookieparts = [line.strip() for line in cookieinput.split('') if line.strip()]
     
     for part in cookieparts:
         if not part or part.startswith('#') or part.startswith('//'):
@@ -286,8 +283,7 @@ def getinputdata(req, fieldname):
     # Try text input first
     textinput = req.form.get(fieldname, '').strip()
     if textinput:
-        lines = [line.strip() for line in textinput.split('
-') if line.strip()]
+        lines = [line.strip() for line in textinput.split('') if line.strip()]
         data.extend(lines)
     
     # Try file upload
@@ -295,8 +291,7 @@ def getinputdata(req, fieldname):
     if file and file.filename:
         try:
             content = file.read().decode('utf-8')
-            lines = [line.strip() for line in content.split('
-') if line.strip()]
+            lines = [line.strip() for line in content.split('') if line.strip()]
             data.extend(lines)
             logconsole(f"Loaded {len(lines)} items from {file.filename}")
         except Exception as e:
@@ -738,3 +733,4 @@ if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
 
         
+
