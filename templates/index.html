@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Messenger 2030 - Multi-User</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4338ca;
+            --secondary: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --dark: #1f2937;
+            --light: #f3f4f6;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: var(--dark);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .header h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+        
+        .header .user-info {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .status-bar {
+            background: var(--light);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            min-height: 600px;
+        }
+        
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .input-section {
+            padding: 30px;
+            border-right: 1px solid #e5e7eb;
+            background: #fafafa;
+        }
+        
+        .output-section {
+            padding: 30px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .section-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .input-group {
+            margin-bottom: 25px;
+        }
+        
+        .input-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 0.95rem;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            background: white;
+            resize: vertical;
+            min-height: 120px;
+            font-family: monospace;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        
+        .file-upload {
+            margin-top: 8px;
+        }
+        
+        .file-input {
+            width: 100%;
+            padding: 8px;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            background: #f9fafb;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .file-input:hover {
+            border-color: var(--primary);
+            background: #f0f9ff;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: var(--secondary);
+            color: white;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .logs-container {
+            flex: 1;
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            overflow-y: auto;
+            max-height: 400px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            color: #00ff00;
+            word-wrap: break-word;
+        }
+        
+        .log-entry.warning { color: #ffa500; }
+        .log-entry.error { color: #ff4444; }
+        .log-entry.info { color: #4444ff; }
+        
+        .tasks-container {
+            background: var(--light);
+            border-radius: 8px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .task-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid var(--primary);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .task-id {
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        .task-status {
+            font-size: 0.8rem;
+            padding: 3px 8px;
+            border-radius: 12px;
+        }
+        
+        .task-progress {
+            margin-top: 8px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            transition: width 0.3s ease;
+        }
+        
+        .task-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+        
+        .instructions {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .instructions h3 {
+            color: #0369a1;
+            margin-bottom: 10px;
+        }
+        
+        .instructions ul {
+            padding-left: 20px;
+            color: #475569;
+        }
+        
+        .instructions li {
+            margin-bottom: 5px;
+        }
+        
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🧠 Neural Messenger 2030</h1>
+                <div class="user-info">User ID: <span id="userId">Loading...</span></div>
+            </div>
+            <div class="actions">
+                <button class="btn btn-success" onclick="checkStatus()">
+                    🔄 Refresh Status
+                </button>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-item">
+                <span>Playwright:</span>
+                <span id="playwrightStatus" class="status-badge badge-warning">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span>Browser:</span>
+                <span id="browserStatus" class="status-badge badge-warning">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span>Active Tasks:</span>
+                <span id="activeTasks" class="status-badge badge-info">0</span>
+            </div>
+            <div class="status-item">
+                <span>Total Tasks:</span>
+                <span id="totalTasks" class="status-badge badge-info">0</span>
+            </div>
+            <div class="status-item">
+                <span>Logs:</span>
+                <span id="logsCount" class="status-badge badge-info">0</span>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="input-section">
+                <div class="section-title">📥 Input Configuration</div>
+                
+                <div class="input-group">
+                    <label class="input-label">🍪 Facebook Cookies (one set per line or JSON)</label>
+                    <textarea class="input-field" id="cookies" placeholder="Paste cookies in format: name=value
+Or JSON format: [{'name': 'cookie1', 'value': 'value1'}, ...]"></textarea>
+                    <div class="file-upload">
+                        <input type="file" id="cookies_file" class="file-input" accept=".txt,.json">
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label">💬 Messages (one per line)</label>
+                    <textarea class="input-field" id="messages" placeholder="Hello! 👋
+How are you? 😊
+Check this out! 🚀"></textarea>
+                    <div class="file-upload">
+                        <input type="file" id="messages_file" class="file-input" accept=".txt">
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label">👥 Conversation IDs (one per line)</label>
+                    <textarea class="input-field" id="conversations" placeholder="1000123456789
+1000987654321"></textarea>
+                    <div class="file-upload">
+                        <input type="file" id="conversations_file" class="file-input" accept=".txt">
+                    </div>
+                </div>
+                
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="startTask()" id="startBtn">
+                        🚀 Start Messaging Task
+                    </button>
+                    <button class="btn btn-danger" onclick="stopAllTasks()" id="stopAllBtn">
+                        ⏹️ Stop All Tasks
+                    </button>
+                </div>
+                
+                <div class="instructions">
+                    <h3>📋 Usage Instructions</h3>
+                    <ul>
+                        <li>Each user gets isolated sessions and tasks</li>
+                        <li>Cookies can be in name=value format or JSON array</li>
+                        <li>Messages are automatically enhanced with emojis</li>
+                        <li>Tasks run in background with real-time progress</li>
+                        <li>Random delays between messages for natural behavior</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="output-section">
+                <div class="section-title">📊 Real-time Monitoring</div>
+                
+                <div class="section-title" style="font-size: 1rem;">📝 Live Logs</div>
+                <div class="logs-container" id="logsContainer">
+                    <div class="log-entry">System initialized. Waiting for tasks...</div>
+                </div>
+                
+                <div class="section-title" style="font-size: 1rem;">🔄 Active Tasks</div>
+                <div class="tasks-container" id="tasksContainer">
+                    <div class="task-item">
+                        <div class="task-header">
+                            <span class="task-id">No active tasks</span>
+                            <span class="task-status badge-info">IDLE</span>
+                        </div>
+                        <div class="task-stats">
+                            <span>Progress: 0/0</span>
+                            <span>Success: 0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let refreshInterval;
+        let userId = 'unknown';
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkStatus();
+            refreshInterval = setInterval(refreshData, 2000);
+            
+            // Set up file input handlers
+            setupFileInputs();
+        });
+        
+        function setupFileInputs() {
+            const fileInputs = ['cookies', 'messages', 'conversations'];
+            fileInputs.forEach(field => {
+                const fileInput = document.getElementById(`${field}_file`);
+                fileInput.addEventListener('change', function(e) {
+                    if (this.files.length > 0) {
+                        readFile(this.files[0], field);
+                    }
+                });
+            });
+        }
+        
+        function readFile(file, field) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById(field).value = e.target.result;
+                addLog(`📁 Loaded ${file.name} into ${field}`, 'info');
+            };
+            reader.readAsText(file);
+        }
+        
+        function checkStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('playwrightStatus').textContent = data.playwright ? '✅ Available' : '❌ Not Available';
+                    document.getElementById('playwrightStatus').className = `status-badge ${data.playwright ? 'badge-success' : 'badge-danger'}`;
+                    
+                    document.getElementById('browserStatus').textContent = data.browser ? '✅ Installed' : '❌ Not Installed';
+                    document.getElementById('browserStatus').className = `status-badge ${data.browser ? 'badge-success' : 'badge-danger'}`;
+                    
+                    document.getElementById('activeTasks').textContent = data.active_tasks;
+                    document.getElementById('totalTasks').textContent = data.total_tasks;
+                    document.getElementById('logsCount').textContent = data.logs_count;
+                    document.getElementById('userId').textContent = data.user_id || 'Unknown';
+                    
+                    userId = data.user_id;
+                })
+                .catch(error => {
+                    console.error('Status check failed:', error);
+                    addLog('❌ Failed to check system status', 'error');
+                });
+        }
+        
+        function refreshData() {
+            fetchLogs();
+            fetchTasks();
+        }
+        
+        function fetchLogs() {
+            fetch('/api/logs')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('logsContainer');
+                    container.innerHTML = '';
+                    
+                    data.logs.forEach(log => {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'log-entry';
+                        
+                        if (log.includes('❌') || log.includes('Error') || log.includes('Failed')) {
+                            logEntry.className += ' error';
+                        } else if (log.includes('⚠️') || log.includes('Warning')) {
+                            logEntry.className += ' warning';
+                        } else if (log.includes('✅') || log.includes('Success')) {
+                            logEntry.className += ' info';
+                        }
+                        
+                        logEntry.textContent = log;
+                        container.appendChild(logEntry);
+                    });
+                    
+                    container.scrollTop = container.scrollHeight;
+                })
+                .catch(error => console.error('Failed to fetch logs:', error));
+        }
+        
+        function fetchTasks() {
+            fetch('/api/tasks')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('tasksContainer');
+                    
+                    if (data.tasks.length === 0) {
+                        container.innerHTML = `
+                            <div class="task-item">
+                                <div class="task-header">
+                                    <span class="task-id">No active tasks</span>
+                                    <span class="task-status badge-info">IDLE</span>
+                                </div>
+                                <div class="task-stats">
+                                    <span>Progress: 0/0</span>
+                                    <span>Success: 0</span>
+                                </div>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    container.innerHTML = '';
+                    
+                    data.tasks.forEach(task => {
+                        const taskElement = document.createElement('div');
+                        taskElement.className = 'task-item';
+                        
+                        const progressPercent = task.progress || 0;
+                        const statusClass = task.active ? 'badge-success' : 'badge-warning';
+                        const statusText = task.active ? 'RUNNING' : 'STOPPED';
+                        
+                        taskElement.innerHTML = `
+                            <div class="task-header">
+                                <span class="task-id">${task.id}</span>
+                                <span class="task-status ${statusClass}">${statusText}</span>
+                            </div>
+  
