@@ -516,4 +516,164 @@ def api_start():
     if not messages_list:
         return jsonify({'success': False, 'message': 'No messages provided'})
     if not conversations_list:
+        return jsonify({'success': False, 'message': 'No conversations provided'})
+    
+    # Create task
+    task_id = f"task_{int(time.time())}_{random.randint(1000, 9999)}"
+    
+    user_session['tasks_data'][task_id] = {
+        'cookies': cookies_list,
+        'messages': messages_list,
+        'conversations': conversations_list,
+        'current_index': 0,
+        'active': True,
+        'success_count': 0,
+        'total_count': len(messages_list) * len(conversations_list) * len(cookies_list),
+        'start_time': time.time(),
+        'user_id': user_id
+    }
+    
+    def task_worker():
+        task = user_session['tasks_data'][task_id]
+        user_id = task['user_id']
+        
+        while task['active'] and task['current_index'] < task['total_count']:
+            try:
+                # Calculate indices
+                msg_idx = task['current_index'] % len(task['messages'])
+                conv_idx = (task['current_index'] // len(task['messages'])) % len(task['conversations'])
+                cookie_idx = (task['current_index'] // (len(task['messages']) * len(task['conversations']))) % len(task['cookies'])
+                
+                if cookie_idx >= len(task['cookies']):
+                    break
+                
+                message = task['messages'][msg_idx]
+                conversation = task['conversations'][conv_idx]
+                cookie_input = task['cookies'][cookie_idx]
+                
+                # Enhance message
+                enhanced_msg = enhance_message(message)
+                
+                # Parse cookies
+                cookies = parse_cookies(cookie_input)
+                
+                if not cookies:
+                    log_console(f"[{task_id}] ❌ No valid cookies parsed", user_id)
+                    task['current_index'] += 1
+                    continue
+                
+                # Send message
+                log_console(f"[{task_id}] Sending: '{enhanced_msg}' → {conversation}", user_id)
+                
+                success = run_async_task(
+                    send_facebook_message_playwright(cookies, conversation, enhanced_msg, task_id, user_id)
+                )
+                
+                if success:
+                    task['success_count'] += 1
+                    log_console(f"[{task_id}] ✅ Success! Total: {task['success_count']}", user_id)
+                else:
+                    log_console(f"[{task_id}] ❌ Failed to send message", user_id)
+                
+                task['current_index'] += 1
+                
+                # Random delay between messages (5-10 seconds)
+                delay = random.uniform(5, 10)
+                time.sleep(delay)
+                
+            except Exception as e:
+                log_console(f"[{task_id}] ❌ Worker error: {e}", user_id)
+                task['current_index'] += 1
+                time.sleep(3)
+        
+        task['active'] = False
+        log_console(f"[{task_id}] 🏁 Task completed! Success: {task['success_count']}/{task['total_count']}", user_id)
+    
+    # Start worker thread
+    thread = threading.Thread(target=task_worker, daemon=True)
+    thread.start()
+    
+    return jsonify({
+        'success': True, 
+        'task_id': task_id,
+        'message': f'Task {task_id} started successfully!'
+    })
+
+@app.route('/api/stop/<task_id>', methods=['POST'])
+def api_stop(task_id):
+    user_session = get_user_session()
+    if task_id in user_session['tasks_data']:
+        user_session['tasks_data'][task_id]['active'] = False
+        return jsonify({'success': True, 'message': f'Task {task_id} stopped'})
+    return jsonify({'success': False, 'message': 'Task not found'})
+
+@app.route('/api/tasks')
+def api_tasks():
+    user_session = get_user_session()
+    task_list = []
+    for task_id, task in user_session['tasks_data'].items():
+        task_list.append({
+            'id': task_id,
+            'active': task.get('active', False),
+            'success_count': task.get('success_count', 0),
+            'total_count': task.get('total_count', 0),
+            'current_index': task.get('current_index', 0),
+            'progress': min(100, (task.get('current_index', 0) / task.get('total_count', 1)) * 100) if task.get('total_count', 0) > 0 else 0
+        })
+    return jsonify({'tasks': task_list})
+
+def cleanup_inactive_sessions():
+    """Clean up sessions inactive for more than 1 hour"""
+    while True:
+        try:
+            current_time = time.time()
+            with session_lock:
+                inactive_users = []
+                for user_id, session_data in user_sessions.items():
+                    if current_time - session_data['last_activity'] > 3600:  # 1 hour
+                        inactive_users.append(user_id)
+                
+                for user_id in inactive_users:
+                    del user_sessions[user_id]
+                    print(f"Cleaned up inactive session: {user_id}")
+        except Exception as e:
+            print(f"Error in session cleanup: {e}")
+        
+        time.sleep(300)  # Run every 5 minutes
+
+def init_app():
+    """Initialize the application - FIXED VERSION"""
+    print("🚀 Neural Messenger 2030 Initializing...")
+    print("📦 Checking dependencies...")
+    
+    # Start session cleanup thread
+    cleanup_thread = threading.Thread(target=cleanup_inactive_sessions, daemon=True)
+    cleanup_thread.start()
+    
+    # Try to import playwright
+    try:
+        from playwright.async_api import async_playwright
+        global PLAYWRIGHT_AVAILABLE
+        PLAYWRIGHT_AVAILABLE = True
+        print("✅ Playwright is available")
+    except ImportError:
+        print("⚠️ Playwright not installed, will auto-install on first use")
+    
+    # Check if browser is installed
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "list-browsers"], 
+                      capture_output=True, timeout=30)
+        global BROWSER_INSTALLED
+        BROWSER_INSTALLED = True
+        print("✅ Browser is installed")
+    except:
+        print("⚠️ Browser not installed, will auto-install on first use")
+
+# Initialize the app
+init_app()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🌐 Starting server on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=False)
  
