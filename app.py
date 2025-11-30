@@ -534,4 +534,61 @@ def api_tasks():
             'success_count': task.get('success_count', 0),
             'total_count': task.get('total_count', 0),
             'current_index': task.get('current_index', 0),
-            'progress': min(100, (task.get('current_index', 0) / task.get('total_count', 1)) * 100) if task.get('total_count', 
+            'progress': min(100, (task.get('current_index', 0) / task.get('total_count', 1)) * 100) if task.get('total_count', 0) > 0 else 0
+        })
+    return jsonify({'tasks': task_list})
+
+def cleanup_inactive_sessions():
+    """Clean up sessions inactive for more than 1 hour"""
+    while True:
+        try:
+            current_time = time.time()
+            with session_lock:
+                inactive_users = []
+                for user_id, session_data in user_sessions.items():
+                    if current_time - session_data['last_activity'] > 3600:  # 1 hour
+                        inactive_users.append(user_id)
+                
+                for user_id in inactive_users:
+                    del user_sessions[user_id]
+                    print(f"Cleaned up inactive session: {user_id}")
+        except Exception as e:
+            print(f"Error in session cleanup: {e}")
+        
+        time.sleep(300)  # Run every 5 minutes
+
+def init_app():
+    """Initialize the application - FIXED VERSION"""
+    print("🚀 Neural Messenger 2030 Initializing...")
+    print("📦 Checking dependencies...")
+    
+    # Start session cleanup thread
+    cleanup_thread = threading.Thread(target=cleanup_inactive_sessions, daemon=True)
+    cleanup_thread.start()
+    
+    # Try to import playwright
+    try:
+        from playwright.async_api import async_playwright
+        global PLAYWRIGHT_AVAILABLE
+        PLAYWRIGHT_AVAILABLE = True
+        print("✅ Playwright is available")
+    except ImportError:
+        print("⚠️ Playwright not installed, will auto-install on first use")
+    
+    # Check if browser is installed
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "list-browsers"], 
+                      capture_output=True, timeout=30)
+        global BROWSER_INSTALLED
+        BROWSER_INSTALLED = True
+        print("✅ Browser is installed")
+    except:
+        print("⚠️ Browser not installed, will auto-install on first use")
+
+# Initialize the app
+init_app()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🌐 Starting server on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=False)
