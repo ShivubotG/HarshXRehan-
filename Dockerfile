@@ -1,18 +1,49 @@
-# Playwright + Chromium pre-installed official image
-FROM mcr.microsoft.com/playwright/python:v1.47.0-noble
+FROM python:3.10-slim
 
-# Workdir
+# Install system dependencies including Chromium
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    apt-transport-https \
+    fonts-indic \
+    fonts-noto \
+    fonts-freefont-ttf \
+    libnss3 \
+    libxss1 \
+    libasound2 \
+    libxtst6 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxi6 \
+    libxrandr2 \
+    libxss1 \
+    libxtst6 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libgbm-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
 WORKDIR /app
 
-# Copy dependency list and install
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# Install Playwright and browsers
+RUN playwright install chromium
+RUN playwright install-deps
+
+# Copy application code
 COPY . .
 
-# Service will listen on this port
-EXPOSE 5000
+# Create necessary directories
+RUN mkdir -p /tmp/playwright
 
-# Start Flask app
+# Expose port
+EXPOSE 10000
+
+# Start application
 CMD ["python", "app.py"]
