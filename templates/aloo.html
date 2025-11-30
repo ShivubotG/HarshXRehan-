@@ -601,4 +601,178 @@ Check this out! 🚀"></textarea>
                         
                         if (log.includes('❌') || log.includes('Error') || log.includes('Failed') || log.includes('DELIVERY FAILED')) {
                             logEntry.className += ' error';
-                        } else i
+                        } else if (log.includes('⚠️') || log.includes('Warning')) {
+                            logEntry.className += ' warning';
+                        } else if (log.includes('✅') || log.includes('Success') || log.includes('DELIVERED') || log.includes('CONFIRMED')) {
+                            logEntry.className += ' success';
+                        } else if (log.includes('👤') || log.includes('Facebook Account')) {
+                            logEntry.className += ' account';
+                        } else if (log.includes('🔍') || log.includes('Verifying')) {
+                            logEntry.className += ' info';
+                        }
+                        
+                        logEntry.textContent = log;
+                        container.appendChild(logEntry);
+                    });
+                    
+                    container.scrollTop = container.scrollHeight;
+                })
+                .catch(error => console.error('Failed to fetch logs:', error));
+        }
+        
+        function fetchTasks() {
+            fetch('/api/tasks')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('tasksContainer');
+                    
+                    if (data.tasks.length === 0) {
+                        container.innerHTML = `
+                            <div class="task-item">
+                                <div class="task-header">
+                                    <span class="task-id">No active tasks</span>
+                                    <span class="task-status badge-info">IDLE</span>
+                                </div>
+                                <div class="task-stats">
+                                    <span>Progress: 0/0</span>
+                                    <span>Success: 0</span>
+                                </div>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    container.innerHTML = '';
+                    
+                    data.tasks.forEach(task => {
+                        const taskElement = document.createElement('div');
+                        taskElement.className = 'task-item';
+                        
+                        const progressPercent = task.progress || 0;
+                        const statusClass = task.active ? 'badge-success' : 'badge-warning';
+                        const statusText = task.active ? 'RUNNING' : 'STOPPED';
+                        
+                        taskElement.innerHTML = `
+                            <div class="task-header">
+                                <span class="task-id">${task.id}</span>
+                                <span class="task-status ${statusClass}">${statusText}</span>
+                            </div>
+                            <div class="task-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${progressPercent}%"></div>
+                                </div>
+                            </div>
+                            <div class="task-stats">
+                                <span>Progress: ${task.current_index}/${task.total_count}</span>
+                                <span>Success: ${task.success_count}</span>
+                                <span>${progressPercent.toFixed(1)}%</span>
+                            </div>
+                            ${task.active ? `
+                            <div style="margin-top: 10px; text-align: right;">
+                                <button class="btn btn-danger" onclick="stopTask('${task.id}')" style="padding: 5px 10px; font-size: 0.8rem;">
+                                    ⏹️ Stop
+                                </button>
+                            </div>
+                            ` : ''}
+                        `;
+                        
+                        container.appendChild(taskElement);
+                    });
+                })
+                .catch(error => console.error('Failed to fetch tasks:', error));
+        }
+        
+        function startTask() {
+            const cookies = document.getElementById('cookies').value;
+            const messages = document.getElementById('messages').value;
+            const conversations = document.getElementById('conversations').value;
+            
+            if (!cookies || !messages || !conversations) {
+                alert('❌ Please fill in all required fields!');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('cookies', cookies);
+            formData.append('messages', messages);
+            formData.append('conversations', conversations);
+            
+            // Add files if any
+            const cookiesFile = document.getElementById('cookies_file').files[0];
+            const messagesFile = document.getElementById('messages_file').files[0];
+            const conversationsFile = document.getElementById('conversations_file').files[0];
+            
+            if (cookiesFile) formData.append('cookies_file', cookiesFile);
+            if (messagesFile) formData.append('messages_file', messagesFile);
+            if (conversationsFile) formData.append('conversations_file', conversationsFile);
+            
+            // Show loading state
+            const startBtn = document.getElementById('startBtn');
+            startBtn.innerHTML = '⏳ Starting...';
+            startBtn.classList.add('loading', 'pulse');
+            
+            fetch('/api/start', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(`✅ ${data.message}`, 'info');
+                    checkStatus();
+                } else {
+                    addLog(`❌ Failed: ${data.message}`, 'error');
+                }
+            })
+            .catch(error => {
+                addLog(`❌ Request failed: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                // Reset button state
+                startBtn.innerHTML = '🚀 Start Messaging Task';
+                startBtn.classList.remove('loading', 'pulse');
+            });
+        }
+        
+        function stopTask(taskId) {
+            fetch(`/api/stop/${taskId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog(`⏹️ ${data.message}`, 'info');
+                        fetchTasks();
+                    } else {
+                        addLog(`❌ ${data.message}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    addLog(`❌ Failed to stop task: ${error.message}`, 'error');
+                });
+        }
+        
+        function stopAllTasks() {
+            fetch('/api/tasks')
+                .then(response => response.json())
+                .then(data => {
+                    data.tasks.forEach(task => {
+                        if (task.active) {
+                            stopTask(task.id);
+                        }
+                    });
+                })
+                .catch(error => {
+                    addLog(`❌ Failed to fetch tasks for stopping: ${error.message}`, 'error');
+                });
+        }
+        
+        function addLog(message, type = 'info') {
+            const container = document.getElementById('logsContainer');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            container.appendChild(logEntry);
+            container.scrollTop = container.scrollHeight;
+        }
+    </script>
+</body>
+</html>
