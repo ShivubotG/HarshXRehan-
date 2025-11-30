@@ -646,8 +646,7 @@ def apistart():
         subprocess.run([
             sys.executable, '-m', 'playwright', 'list-browsers'
         ], capture_output=True, timeout=30)
-        global BROWSERINSTALLED
-        BROWSERINSTALLED = True
+        global BROWSER_INSTALLED = True
         print("Browser is installed")
     except:
         print("Browser not installed, will auto-install on first use")
@@ -733,4 +732,5 @@ if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
 
         
+
 
