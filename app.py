@@ -510,7 +510,7 @@ async def send_facebook_message_improved(cookies, conversation_id, message, task
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                headless=False,  # headful to reduce trivial detection heuristics
+                headless=True,  # headful to reduce trivial detection heuristics
                 args=[
                     '--no-sandbox',
                     '--disable-dev-shm-usage'
@@ -770,3 +770,4 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port, debug=False)
 
     
+
