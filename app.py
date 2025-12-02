@@ -1,8 +1,3 @@
-# app.py (merged + fixed)
-# Merged from user's original app.py with fixes for cookie login and message sending.
-# Stealth techniques intentionally omitted.
-# Reference: original file uploaded by user. 1
-
 import random
 import time
 import asyncio
@@ -773,4 +768,5 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     print(f"🌐 Starting server on port {port}...")
     app.run(host='0.0.0.0', port=port, debug=False)
+
     
